@@ -5,10 +5,11 @@ A modern, responsive data analysis application with AI chat capabilities built w
 ## Features
 
 - Clean, modern UI with a slide-out chat panel
-- Integration with OpenAI's GPT-3.5 Turbo model
+- Integration with OpenAI's GPT models
 - Responsive design that works on various screen sizes
 - Smooth animations and transitions
 - Prompt suggestions to help users get started with data analysis
+- Real-time streaming of AI responses
 
 ## Requirements
 
@@ -20,7 +21,7 @@ A modern, responsive data analysis application with AI chat capabilities built w
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/solara_ai_data_analysis.git
+git clone https://github.com/davidcwhite/solara_ai_data_analysis.git
 cd solara_ai_data_analysis
 ```
 
@@ -39,15 +40,22 @@ OPENAI_API_KEY=your_api_key_here
 Run the application with:
 
 ```bash
-python -m solara_ai_chat.app
+solara run app.py
 ```
 
 Then open your browser to `http://localhost:8765` to view the application.
 
+## Customization
+
+You can customize the application by:
+
+- Changing the OpenAI model in `app.py` (e.g., from "gpt-3.5-turbo" to "gpt-4")
+- Modifying the system prompt to change the AI's behavior
+- Adjusting the UI styling to match your preferences
+
 ## Project Structure
 
-- `solara_ai_chat/app.py`: Main application code
-- `solara_ai_chat/__init__.py`: Package initialization
+- `app.py`: Main application code
 - `.env`: Environment variables (not tracked by Git)
 - `requirements.txt`: Project dependencies
 
