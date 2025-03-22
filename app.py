@@ -1,17 +1,22 @@
 """
-# Solara AI Chat Application
+# Solara AI Data Analysis
 
 A web application built with Solara that provides an interactive chat interface with OpenAI's GPT models.
 """
 
 import solara
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, cast
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
 import logging
 import solara.lab
 from solara.lab import task
+import pandas as pd
+import numpy as np
+from ipyaggrid import Grid
+import ipywidgets as widgets
+from IPython.display import display as ipy_display
 
 # Load environment variables
 load_dotenv()
@@ -27,14 +32,52 @@ messages: solara.Reactive[List[MessageDict]] = solara.reactive([])
 chat_open: solara.Reactive[bool] = solara.reactive(False)  # Control chat panel visibility
 show_suggestions: solara.Reactive[bool] = solara.reactive(True)  # Control prompt suggestions visibility
 
-# Define some example prompts
+# Define some example prompts related to data analysis
 EXAMPLE_PROMPTS = [
-    "Tell me a joke",
-    "Explain quantum computing",
-    "Write a short poem",
-    "Give me a coding challenge",
-    "What's the meaning of life?",
+    "What are the top-selling products?",
+    "Show me sales trends by region",
+    "Which customer segment has the highest revenue?",
+    "Compare Q1 vs Q2 performance",
+    "Identify underperforming products",
 ]
+
+# Generate sample sales data
+def generate_sample_data(rows=100):
+    """Generate sample sales data for demonstration."""
+    np.random.seed(42)  # For reproducibility
+    
+    # Define possible values for categorical columns
+    regions = ['North', 'South', 'East', 'West', 'Central']
+    product_categories = ['Electronics', 'Clothing', 'Home Goods', 'Groceries', 'Books']
+    customer_segments = ['Retail', 'Corporate', 'Small Business', 'Government', 'Education']
+    payment_methods = ['Credit Card', 'Cash', 'Bank Transfer', 'PayPal', 'Check']
+    
+    # Generate data
+    data = {
+        'Order ID': [f'ORD-{i:04d}' for i in range(1, rows + 1)],
+        'Date': pd.date_range(start='2023-01-01', periods=rows),
+        'Region': np.random.choice(regions, size=rows),
+        'Product Category': np.random.choice(product_categories, size=rows),
+        'Product Name': [f'Product {i}' for i in range(1, rows + 1)],
+        'Quantity': np.random.randint(1, 20, size=rows),
+        'Unit Price': np.round(np.random.uniform(10, 500, size=rows), 2),
+        'Customer Segment': np.random.choice(customer_segments, size=rows),
+        'Payment Method': np.random.choice(payment_methods, size=rows),
+    }
+    
+    # Calculate total sales
+    df = pd.DataFrame(data)
+    df['Total Sales'] = df['Quantity'] * df['Unit Price']
+    
+    # Add some seasonality and trends
+    month = df['Date'].dt.month
+    df.loc[month.isin([11, 12]), 'Total Sales'] *= 1.5  # Holiday season boost
+    df.loc[df['Product Category'] == 'Electronics', 'Total Sales'] *= 1.2  # Electronics premium
+    
+    return df
+
+# Create sample data
+sales_data = generate_sample_data(100)
 
 def no_api_key_message():
     """Display a message when no API key is provided."""
@@ -46,6 +89,82 @@ def toggle_chat():
     # Reset suggestions visibility when opening chat
     if chat_open.value and not messages.value:
         show_suggestions.value = True
+
+@solara.component
+def AgGrid(df, grid_options):
+    """A wrapper component for ipyaggrid that works with Solara."""
+    # Create a reactive height
+    height = solara.use_reactive(500)
+    
+    # Create the grid element
+    el = Grid.element(
+        grid_data=df,
+        grid_options=grid_options,
+        theme="ag-theme-balham",
+        columns_fit="auto",
+        index=False,
+        height=height.value
+    )
+    
+    # Use effect to update the grid when data changes
+    def update_grid():
+        widget = cast(Grid, solara.get_widget(el))
+        widget.grid_options = grid_options
+        widget.update_grid_data(df)
+        
+        # Handle height properly - this is a workaround for ipyaggrid's height handling in Solara
+        if isinstance(widget.height, int):
+            height.set(f"{widget.height}px")
+    
+    solara.use_effect(update_grid, [df, grid_options])
+    
+    return el
+
+@solara.component
+def DataGrid():
+    """Data grid component using ipyaggrid."""
+    # Configure the grid options
+    grid_options = {
+        'columnDefs': [
+            {'headerName': 'Order ID', 'field': 'Order ID', 'filter': True, 'sortable': True},
+            {'headerName': 'Date', 'field': 'Date', 'filter': True, 'sortable': True},
+            {'headerName': 'Region', 'field': 'Region', 'filter': True, 'sortable': True},
+            {'headerName': 'Product Category', 'field': 'Product Category', 'filter': True, 'sortable': True},
+            {'headerName': 'Product Name', 'field': 'Product Name', 'filter': True, 'sortable': True},
+            {'headerName': 'Quantity', 'field': 'Quantity', 'filter': True, 'sortable': True},
+            {'headerName': 'Unit Price', 'field': 'Unit Price', 'filter': True, 'sortable': True, 'type': 'numericColumn'},
+            {'headerName': 'Customer Segment', 'field': 'Customer Segment', 'filter': True, 'sortable': True},
+            {'headerName': 'Payment Method', 'field': 'Payment Method', 'filter': True, 'sortable': True},
+            {'headerName': 'Total Sales', 'field': 'Total Sales', 'filter': True, 'sortable': True, 'type': 'numericColumn'},
+        ],
+        'defaultColDef': {
+            'flex': 1,
+            'minWidth': 100,
+            'filter': True,
+            'sortable': True,
+            'resizable': True,
+        },
+        'enableRangeSelection': True,
+        'animateRows': True,
+        'pagination': True,
+        'paginationPageSize': 10,
+    }
+    
+    # Convert DataFrame to dictionary for the grid
+    data = sales_data.to_dict('records')
+    
+    # Create a container for the grid
+    with solara.Column(style={"height": "500px", "width": "100%"}):
+        # Create the grid
+        grid = Grid(
+            grid_data=data,
+            grid_options=grid_options,
+            theme="ag-theme-balham",
+            columns_fit="auto",
+            index=False,
+            height=500  # Integer value as required by ipyaggrid
+        )
+        solara.display(grid)
 
 @solara.component
 def ChatPanel():
@@ -256,15 +375,15 @@ def Page():
     
     # Custom App Bar
     with solara.Row(classes=["app-bar"]):
-        solara.Text("My App", classes=["app-title"])
+        solara.Text("Sales Data Analysis", classes=["app-title"])
         
         buttons_classes = ["app-buttons"]
         if chat_open.value:
             buttons_classes.append("shifted")
             
         with solara.Row(classes=buttons_classes):
-            solara.Button("Home", text=True)
-            solara.Button("About", text=True)
+            solara.Button("Dashboard", text=True)
+            solara.Button("Reports", text=True)
             solara.Button(
                 "AI Chat",
                 text=True,
@@ -273,8 +392,18 @@ def Page():
     
     # Main content area
     with solara.Column(classes=["main-content"]):
-        solara.Markdown("# Welcome to My App")
-        solara.Markdown("Click the AI Chat button in the navigation bar to start chatting!")
+        solara.Markdown("# Sales Data Dashboard")
+        solara.Markdown("""
+        This dashboard displays sales data that you can analyze. Use the AI Chat feature to ask questions about the data.
+        
+        Try asking questions like:
+        - What are the top-selling products?
+        - Show me sales trends by region
+        - Which customer segment has the highest revenue?
+        """)
+        
+        # Add the data grid
+        DataGrid()
     
     # Chat panel (outside the main container to allow fixed positioning)
     chat_panel_classes = ["chat-panel"]
@@ -311,9 +440,25 @@ async def prompt_ai(prompt: str = ""):
 
     # Get AI response
     try:
+        # Create a system message that provides context about the data
+        system_message = """
+        You are an AI assistant helping with data analysis of sales data. The data includes:
+        - Order information (Order ID, Date)
+        - Product details (Category, Name, Quantity, Unit Price)
+        - Customer information (Region, Customer Segment)
+        - Payment details (Payment Method)
+        - Sales metrics (Total Sales = Quantity * Unit Price)
+        
+        Provide insightful analysis and answer questions about the data. Be concise but thorough.
+        """
+        
+        # Create the messages array with the system message
+        message_list = [{"role": "system", "content": system_message}]
+        message_list.extend([{"role": m["role"], "content": m["content"]} for m in messages.value])
+        
         completion = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": m["role"], "content": m["content"]} for m in messages.value]
+            messages=message_list
         )
         ai_message = completion.choices[0].message.content
         messages.value = messages.value + [{"role": "assistant", "content": ai_message}]
@@ -326,5 +471,5 @@ async def prompt_ai(prompt: str = ""):
 # Add a welcome message when the app starts
 if not messages.value:
     messages.value = [
-        {"role": "assistant", "content": "Hello! I'm your AI assistant. How can I help you today?"}
+        {"role": "assistant", "content": "Hello! I'm your AI data analysis assistant. I can help you analyze the sales data displayed in the dashboard. What would you like to know about the data?"}
     ]
